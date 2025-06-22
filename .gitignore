@@ -1,0 +1,10 @@
+# Python venv やキャッシュを Git から除外
+venv/
+__pycache__/
+*.pyc
+
+# 秘匿情報
+.env
+
+# ログ
+*.log

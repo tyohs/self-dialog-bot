@@ -1,0 +1,22 @@
+# 質問役 → 回答役 を1ターンずつ繰り返すだけの雛形
+[agents]
+0 = {name = "質問者", system = "あなたは質問を作るAIです。"}
+1 = {name = "回答者", system = "あなたは質問に答えるAIです。"}
+
+[settings]
+init_question = "幸福とは何か？"
+
+[[flow]]
+agent = 0
+input  = "{last_answer}"
+output_key = "question"
+
+[[flow]]
+agent = 1
+input  = "{question}"
+output_key = "last_answer"
+
+[[flow]]
+agent = 1
+input  = "{user_msg}"
+output_key = "last_answer"
