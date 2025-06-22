@@ -1,76 +1,78 @@
 from __future__ import annotations
-import toml, pathlib, time
-from typing import Callable, Dict
+import time
+from typing import Callable
+
 from dotenv import load_dotenv
 from openai import OpenAI
 
-load_dotenv()
+# ----------------- API 初期化 -----------------
+load_dotenv()           # .env から OPENAI_API_KEY を読み込む
 client = OpenAI()
 
+# モデルごとの参考単価（入力, 出力）USD / 1M tokens
 PRICE = {
-    "gpt-4.1-nano": (0.20, 0.80)
+    "gpt-4.1-nano":  (0.20, 0.80),
+    "gpt-3.5-turbo": (0.50, 1.50),
 }
 
-def chat(model: str, system_prompt: str, msg: str) -> tuple[str, int]:
-    resp = client.chat.completions.create(
+# ----------------- 1 回問い合わせ -----------------
+def _chat(model: str, role_prompt: str, user_msg: str) -> tuple[str, int]:
+    """
+    system に role_prompt, user に user_msg を入れて呼び出し。
+    戻り値 = (テキスト, 使用トークン数)
+    """
+    rsp = client.chat.completions.create(
         model=model,
         messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user",   "content": msg}
+            {"role": "system", "content": role_prompt},
+            {"role": "user",   "content": user_msg},
         ]
     )
-    return resp.choices[0].message.content.strip(), resp.usage.total_tokens
+    return rsp.choices[0].message.content.strip(), rsp.usage.total_tokens
 
-def run_template(
-        tpl_name: str,
-        model: str,
-        rounds: int = 10,
+# ----------------- メインループ -----------------
+def run_dialogue(
+        init_question: str = "幸福とは何か？",
+        rounds: int = 5,
+        role_q: str = "質問者",
+        role_a: str = "回答者",
+        model: str = "gpt-4.1-nano",
         ui: Callable[[str], None] = print,
         max_tokens: int | None = None,
         max_usd: float  | None = None,
-        extra_state: Dict[str,str] | None = None
-    ) -> int:
-    tpl_path = pathlib.Path("templates") / f"{tpl_name}.toml"
-    tpl = toml.load(tpl_path)
-
-    agents = {int(k): v for k, v in tpl["agents"].items()}
-    price_in, price_out = PRICE.get(model, (0.0, 0.0))
-
-    state: Dict[str, str] = {
-        "question": tpl["settings"].get("init_question", ""),
-        "last_answer": ""
-    }
-    if extra_state:
-        state.update(extra_state)
-
+) -> int:
+    """
+    role_q が質問を生成し、role_a が回答。
+    ui コールバックに対話ログを流しつつ、最後に総トークン数を返す。
+    """
     in_tok = out_tok = 0
+    price_in, price_out = PRICE.get(model, (0.0, 0.0))
+    question = init_question
 
     for turn in range(1, rounds + 1):
-        ui(f"### 〈Turn {turn}〉")
-        for step in tpl["flow"]:
-            agent = agents[step["agent"]]
-            try:
-                prompt_in = step["input"].format(**state)
-            except KeyError as e:
-                ui(f"⚠️ 入力エラー: {e}")
-                continue
+        ui(f"🟡 問い{turn}: {question}")
 
-            msg, tok = chat(model, agent["system"], prompt_in)
-            state[step["output_key"]] = msg
-            ui(f"**{agent['name']}**: {msg}")
+        # ---- 回答側 ----
+        answer, tok_out = _chat(model, f"あなたは{role_a}です。", question)
+        ui(f"🔵 {role_a}: {answer}")
+        out_tok += tok_out
 
-            if step is tpl["flow"][-1]:
-                out_tok += tok
-            else:
-                in_tok += tok
+        # ---- 次の問いを作成 (質問側) ----
+        question, tok_in = _chat(
+            model,
+            f"あなたは{role_q}です。",
+            f"上の答えを踏まえ、さらに深い問いを1つだけ立ててください。\n答え:{answer}"
+        )
+        in_tok += tok_in
 
-            tot_tok = in_tok + out_tok
-            usd = in_tok / 1e6 * price_in + out_tok / 1e6 * price_out
-            if (max_tokens and tot_tok >= max_tokens) or \
-               (max_usd and usd >= max_usd):
-                ui(f"🚨 Stop (Tok {tot_tok:,} / ${usd:.3f})")
-                return tot_tok
+        # ---- 自動停止判定 ----
+        total_tok = in_tok + out_tok
+        usd = in_tok/1e6*price_in + out_tok/1e6*price_out
+        if (max_tokens and total_tok >= max_tokens) or \
+           (max_usd and usd >= max_usd):
+            ui(f"🚨 Stop (Tok {total_tok:,} / ${usd:.3f})")
+            break
 
-            time.sleep(0.1)
+        time.sleep(0.2)   # 速すぎ防止
 
     return in_tok + out_tok
