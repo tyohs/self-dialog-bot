@@ -71,3 +71,4 @@ if exec_usr and usr_msg:
         model="gpt-4.1-nano",
         ui=lambda x: (st.session_state.log.append(x), st.write(x)),
     )
+    """streamlit run streamlit_app.py"""
