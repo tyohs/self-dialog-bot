@@ -3,7 +3,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 
 load_dotenv()
-client = OpenAI(api_key="[REVOKED_API_KEY_REMOVED]")
+client = OpenAI()
 
 MODEL = "gpt-4.1-nano"   # お好みで gpt-3.5-turbo / gpt-4o など
 ROUNDS = 1          # 何往復させるか
