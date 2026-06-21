@@ -1,7 +1,11 @@
 # Python venv やキャッシュを Git から除外
+.venv/
 venv/
 __pycache__/
 *.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
 
 # 秘匿情報
 .env
